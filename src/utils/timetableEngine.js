@@ -688,8 +688,32 @@ function resolveOptionalSub(tname) {
   return 'IT/PE/Hindi'; // fallback
 }
 
+// Order the 4 optional classes for round-robin assignment
+const OPT_CLASSES = ['11Comm', '11Sci', '12Comm', '12Sci'];
+
+// Scan the timetable chronologically for IT/PE/Hindi slots and return a map
+// of "day|pi" -> assigned class, cycling through OPT_CLASSES.
+// This is computed from the raw timetable (not per-teacher) so all 3 optional
+// teachers see the SAME class label at each period.
+function buildOptionalAssignments(timetable, allClassNames) {
+  const slots = [];
+  DAYS.forEach(d => {
+    for (let pi = 0; pi < nPeriods(d); pi++) {
+      const isOpt = OPT_CLASSES.some(cls =>
+        allClassNames.includes(cls) && timetable[cls]?.[d]?.[pi]?.sub === 'IT/PE/Hindi'
+      );
+      if (isOpt) slots.push(`${d}|${pi}`);
+    }
+  });
+  const map = {};
+  slots.forEach((key, i) => { map[key] = OPT_CLASSES[i % OPT_CLASSES.length]; });
+  return map;
+}
+
 export function getTeacherTimetable(timetable, tname, allClassNames) {
   if (!timetable) return null;
+  // Build consistent class assignment for optional slots
+  const optMap = buildOptionalAssignments(timetable, allClassNames);
   const tt = {};
   DAYS.forEach(d => {
     tt[d] = Array.from({ length: nPeriods(d) }, () => []);
@@ -699,18 +723,17 @@ export function getTeacherTimetable(timetable, tname, allClassNames) {
         const s = timetable[cls]?.[d]?.[pi];
         if (s?.teacher && s.teacher.split(',').map(x=>x.trim()).includes(tname)) {
           if (s.sub === 'IT/PE/Hindi') {
-            // Collect flag — will be collapsed into ONE entry below
             hasOptional = true;
           } else {
             tt[d][pi].push({ cls, sub: s.sub, isZero: s.isZero });
           }
         }
       });
-      // Collapse all optional 11/12 classes into a SINGLE entry for this teacher
-      // (physically they teach ONE group of students drawn from all four classes)
       if (hasOptional) {
+        // Show one specific class per slot (round-robin), consistent across all 3 teachers
+        const assignedCls = optMap[`${d}|${pi}`] || OPT_CLASSES[0];
         const optSub = resolveOptionalSub(tname);
-        tt[d][pi].push({ cls: '11 & 12', sub: optSub, isZero: false });
+        tt[d][pi].push({ cls: assignedCls, sub: optSub, isZero: false });
       }
     }
   });
@@ -766,6 +789,8 @@ export function getSubstituteRanking(timetable, allTeacherNames, teacherSubjects
 
 export function buildMasterTimetable(timetable, allTeacherNames, allClassNames) {
   if (!timetable) return [];
+  // Single consistent optional-slot assignment shared across all teacher rows
+  const optMap = buildOptionalAssignments(timetable, allClassNames);
   return allTeacherNames.map(teacher => {
     const days = {};
     let total = 0;
@@ -780,7 +805,7 @@ export function buildMasterTimetable(timetable, allTeacherNames, allClassNames) 
           const s = timetable[cls]?.[d]?.[p];
           if (s?.teacher && s.teacher.split(',').map(x=>x.trim()).includes(teacher)) {
             if (s.sub === 'IT/PE/Hindi') {
-              hasOptional = true; // collapse — don't push 4 classes
+              hasOptional = true;
             } else {
               classes.push(cls);
               sub = s.sub;
@@ -789,8 +814,8 @@ export function buildMasterTimetable(timetable, allTeacherNames, allClassNames) 
           }
         });
         if (hasOptional) {
-          // One entry per period: teacher's specific optional subject
-          days[d].push({ cls: '11 & 12', sub: resolveOptionalSub(teacher), p, isZero: false });
+          const assignedCls = optMap[`${d}|${p}`] || OPT_CLASSES[0];
+          days[d].push({ cls: assignedCls, sub: resolveOptionalSub(teacher), p, isZero: false });
           total++;
         } else if (classes.length > 0) {
           days[d].push({ cls: classes.join(', '), sub, p, isZero });
