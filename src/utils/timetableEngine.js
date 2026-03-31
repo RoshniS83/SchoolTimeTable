@@ -581,6 +581,10 @@ function tabuOptimize(initialTT, { allClassNames, allTeacherNames }, onProgress)
           if (isZeroPeriodSlot(d1, pi1)) continue;
           const s1 = current[cls][d1][pi1];
           if (!s1) continue;
+          // Lock synchronized optional blocks — never swap IT/PE/Hindi slots.
+          // The 4 classes (11Comm, 11Sci, 12Comm, 12Sci) share pre-scheduled
+          // sync slots; allowing independent swaps desynchronizes them.
+          if (s1.sub === 'IT/PE/Hindi') continue;
           
           DAYS.forEach((d2, d2Idx) => {
             if (d2Idx < d1Idx) return;
@@ -590,6 +594,8 @@ function tabuOptimize(initialTT, { allClassNames, allTeacherNames }, onProgress)
               if (isZeroPeriodSlot(d2, pi2)) continue;
               const s2 = current[cls][d2][pi2];
               if (!s2) continue;
+              // Also skip the target slot if it is a synchronized optional block
+              if (s2.sub === 'IT/PE/Hindi') continue;
               
               if (s1.sub === s2.sub && s1.teacher === s2.teacher) continue;
               moves.push({ cls, d1, pi1, d2, pi2 });
