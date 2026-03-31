@@ -104,7 +104,9 @@ export const TEACHER_SUBJECTS = [
   {t:"Dipali C",s:"Maths",c:["9A","9B","9C"]},
   {t:"Shalaka P",s:"Maths",c:["10A","10B","11Comm","11Sci","12Comm","12Sci"]},
   // Science (3-8)
-  {t:"Varsha K",s:"Science",c:["3A","3B","3C","3D","4D"]},
+  {t:"Varsha K",s:"Science",c:["4D"]},
+  // EVS (class 3 uses EVS instead of Science)
+  {t:"Varsha K",s:"EVS",c:["3A","3B","3C","3D"]},
   {t:"Tejal M",s:"Science",c:["4A","4B","4C","5A","5D"]},
   {t:"Kirti J",s:"Science",c:["5B","5C","6A","6B","6C"]},
   {t:"Deepa K",s:"Science",c:["7A","7B","7C","8B"]},
