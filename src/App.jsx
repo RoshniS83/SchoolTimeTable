@@ -253,7 +253,7 @@ function AppInner() {
     );
 
     worker.onmessage = (e) => {
-      const { type, percent, cost, iter, timetable, message } = e.data;
+      const { type, percent, cost, iter, timetable: generatedTimetable, message } = e.data;
 
       if (type === 'progress') {
         setGenProgress(percent);
@@ -263,7 +263,11 @@ function AppInner() {
         else if (percent < 90)  setGenPhase(`Phase 2 — Refining soft constraints… (iter ${iter})`);
         else                    setGenPhase('Finalising…');
       } else if (type === 'done') {
-        setTimetable(timetable);
+        if (generatedTimetable && Object.keys(generatedTimetable).length > 0) {
+          setTimetable(generatedTimetable);
+        } else {
+          console.error('Worker returned empty or null timetable — not saving.');
+        }
         setGenerating(false);
         setGenPhase('');
         setSection('classwise');

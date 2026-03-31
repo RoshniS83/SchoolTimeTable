@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase.js';
 
 export function useSupabase(key, initialValue) {
   const [storedValue, setStoredValue] = useState(initialValue);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Keep a ref so we always have the latest value synchronously
+  const latestValue = useRef(initialValue);
 
   // Load from Supabase on mount
   useEffect(() => {
@@ -21,7 +24,8 @@ export function useSupabase(key, initialValue) {
         }
 
         if (mounted) {
-          if (data && data.value !== null) {
+          if (data && data.value !== null && data.value !== undefined) {
+            latestValue.current = data.value;
             setStoredValue(data.value);
           }
           setIsLoading(false);
@@ -39,15 +43,23 @@ export function useSupabase(key, initialValue) {
   // Save to Supabase
   const setValue = async (value) => {
     try {
-      let valueToStore;
-      // Optimistic local update using functional pattern to get latest state
-      setStoredValue(prev => {
-        valueToStore = value instanceof Function ? value(prev) : value;
-        return valueToStore;
-      });
+      // Compute the new value BEFORE touching React state
+      // This avoids the async-capture bug where valueToStore was null
+      const valueToStore = typeof value === 'function'
+        ? value(latestValue.current)
+        : value;
 
-      // Save to cloud
-      // valueToStore is synchronously computed in the callback above
+      // Guard: never save null/undefined to Supabase (would violate NOT NULL)
+      if (valueToStore === null || valueToStore === undefined) {
+        console.warn(`Skipping Supabase save for "${key}" — value is null/undefined`);
+        return;
+      }
+
+      // Optimistic local update
+      latestValue.current = valueToStore;
+      setStoredValue(valueToStore);
+
+      // Persist to cloud
       const { error } = await supabase
         .from('app_data')
         .upsert(
