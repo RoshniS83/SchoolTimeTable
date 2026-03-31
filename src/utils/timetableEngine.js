@@ -277,7 +277,6 @@ function buildInitial({ allClassNames, classTeachersMap, getSubjectPeriods, getT
   const classSubjects = {}; // cls -> { sub -> { teacher, periods, assigned } }
   const classPools    = {}; // cls -> [{sub, teacher}] remaining tokens
   const daySubCount   = {}; // cls -> day -> { sub: count }
-  const classCtSub    = {}; // cls -> subject used for zero period
 
   allClassNames.forEach(cls => {
     const sp = getSubjectPeriods(cls);
@@ -338,34 +337,22 @@ function buildInitial({ allClassNames, classTeachersMap, getSubjectPeriods, getT
   // ── Step 1: Place zero periods first (Mon–Fri P9) ───────────────────────────
   allClassNames.forEach(cls => {
     const ct  = classTeachersMap[cls] || 'TBD';
-    const subs = classSubjects[cls];
-    // Choose ctSub: any non-PE/Library subject taught by class teacher
-    const ctSub = Object.keys(subs).find(s =>
-      subs[s].teacher === ct && !['PE','Library','Optional-Hindi','Optional-IT','Optional-PE'].includes(s)
-    ) || Object.keys(subs)[0] || 'Zero Period';
-    classCtSub[cls] = ctSub;
 
     DAYS.filter(d => d !== 'Sat').forEach(d => {
       const last = WD_PERIODS - 1;
-      result[cls][d][last] = { sub: ctSub, teacher: ct, isZero: true };
+      result[cls][d][last] = { sub: 'Zero Period', teacher: ct, isZero: true };
       markT(ct, d, last);
-      // We do NOT count zero-period as "assigned" from the pool — it's a special slot
-      // Do NOT increment classSubjects[cls][ctSub].assigned here
+      // Zero periods are completely unlinked from subject quotas.
     });
   });
 
-  // ── Step 2: Build pools EXCLUDING zero-period usage ─────────────────────────
-  // Pool tokens = total periods for subject. Zero period slots are separate.
-  // We need to figure out how many zero-period slots each ctSub fills = 5 (Mon-Fri)
-  // Those DO consume from the subject's weekly total if the subject has a finite count.
-  // So we subtract them from the pool.
+  // ── Step 2: Build pools ─────────────────────────────────────────────────────
+  // Pool tokens = total periods for subject. Zero period slots are completely separate.
   allClassNames.forEach(cls => {
     const subs   = classSubjects[cls];
-    const ctSub  = classCtSub[cls];
     classPools[cls] = [];
     Object.entries(subs).forEach(([sub, info]) => {
-      const zeroPeriodUsage = (sub === ctSub) ? 5 : 0;
-      const remaining = Math.max(0, info.periods - zeroPeriodUsage - (info.assigned || 0));
+      const remaining = Math.max(0, info.periods - (info.assigned || 0));
       for (let i = 0; i < remaining; i++) classPools[cls].push({ sub, teacher: info.teacher });
     });
     // Shuffle pool
@@ -406,10 +393,9 @@ function buildInitial({ allClassNames, classTeachersMap, getSubjectPeriods, getT
           const info = subs[item.sub];
           if (!info) continue;
 
-          // Count assigned so far (zero-period assignments not in pool)
+          // Count assigned so far
           const assigned = info.assigned || 0;
-          const zeroPeriodUsage = (item.sub === classCtSub[cls]) ? 5 : 0;
-          if (assigned >= info.periods - zeroPeriodUsage) continue;
+          if (assigned >= info.periods) continue;
 
           // ── Hard constraints ─────────────────────────────────────────────
           if (pi === 0 && item.sub === 'PE') continue;                           // H5
@@ -427,7 +413,7 @@ function buildInitial({ allClassNames, classTeachersMap, getSubjectPeriods, getT
           if (consec >= 2) continue;
 
           // ── Soft constraint scoring ──────────────────────────────────────
-          const remain = (info.periods - zeroPeriodUsage) - assigned;
+          const remain = info.periods - assigned;
           const tDayLoad = teacherUsed[item.teacher]?.[d]?.size || 0;
           let score = remain * 12 - tDayLoad * 2;
 
@@ -490,8 +476,7 @@ function buildInitial({ allClassNames, classTeachersMap, getSubjectPeriods, getT
           // Level 1: drop consecutive-teacher check, keep everything else incl. max-2/day
           let fb = pool.find(x => {
             const info = subs[x.sub];
-            const z = (x.sub === classCtSub[cls]) ? 5 : 0;
-            if ((info?.assigned||0) >= (info?.periods||0) - z) return false;
+            if ((info?.assigned||0) >= (info?.periods||0)) return false;
             if (pi === 0 && x.sub === 'PE') return false;
             if (!freeT(x.teacher, d, pi)) return false;
             if (NO_DOUBLE_DAY.has(x.sub) && (dsc[x.sub]||0) >= 1) return false;
@@ -503,8 +488,7 @@ function buildInitial({ allClassNames, classTeachersMap, getSubjectPeriods, getT
           if (!fb) {
             fb = pool.find(x => {
               const info = subs[x.sub];
-              const z = (x.sub === classCtSub[cls]) ? 5 : 0;
-              if ((info?.assigned||0) >= (info?.periods||0) - z) return false;
+              if ((info?.assigned||0) >= (info?.periods||0)) return false;
               if (pi === 0 && x.sub === 'PE') return false;
               if (!freeT(x.teacher, d, pi)) return false;
               if ((dsc[x.sub]||0) >= 2) return false; // hard max 2 for all subjects
@@ -515,8 +499,7 @@ function buildInitial({ allClassNames, classTeachersMap, getSubjectPeriods, getT
           if (!fb) {
             fb = pool.find(x => {
               const info = subs[x.sub];
-              const z = (x.sub === classCtSub[cls]) ? 5 : 0;
-              if ((info?.assigned||0) >= (info?.periods||0) - z) return false;
+              if ((info?.assigned||0) >= (info?.periods||0)) return false;
               if ((dsc[x.sub]||0) >= 2) return false; // still hard max 2
               return true;
             });
@@ -525,8 +508,7 @@ function buildInitial({ allClassNames, classTeachersMap, getSubjectPeriods, getT
           if (!fb) {
             fb = pool.find(x => {
               const info = subs[x.sub];
-              const z = (x.sub === classCtSub[cls]) ? 5 : 0;
-              return (info?.assigned||0) < (info?.periods||0) - z && freeT(x.teacher, d, pi);
+              return (info?.assigned||0) < (info?.periods||0) && freeT(x.teacher, d, pi);
             });
           }
 
@@ -542,7 +524,6 @@ function buildInitial({ allClassNames, classTeachersMap, getSubjectPeriods, getT
             // Truly nothing left: repeat an existing subject rather than leave blank
             // Find any subject with remaining budget OR whose count we can exceed
             const anySub = Object.entries(classSubjects[cls])
-              .filter(([s]) => s !== classCtSub[cls])
               .sort((a,b) => (b[1].periods - (b[1].assigned||0)) - (a[1].periods - (a[1].assigned||0)))[0];
             if (anySub && freeT(anySub[1].teacher, d, pi)) {
               result[cls][d][pi] = { sub: anySub[0], teacher: anySub[1].teacher };
@@ -550,7 +531,7 @@ function buildInitial({ allClassNames, classTeachersMap, getSubjectPeriods, getT
             } else {
               // Absolute last resort — use class teacher
               const ct = classTeachersMap[cls] || 'TBD';
-              result[cls][d][pi] = { sub: classCtSub[cls] || 'Free', teacher: ct };
+              result[cls][d][pi] = { sub: 'Free', teacher: ct };
             }
           }
         }

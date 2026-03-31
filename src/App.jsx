@@ -13,7 +13,7 @@ import {
 // Re-export sets needed for quality checks in dashboard
 const ACTIVITY_SUBS = new Set(['PE','Art','Music','Library','Robotics','GK','Aptitude Reasoning','V.Ed']);
 const isHigher = cls => parseInt(cls) >= 7;
-import { useLocalStorage } from './hooks/useLocalStorage.js';
+import { useSupabase } from './hooks/useSupabase.js';
 import { useSchoolData } from './hooks/useSchoolData.js';
 import { useAuth, AuthProvider } from './hooks/useAuth.jsx';
 import LoginScreen from './components/LoginScreen.jsx';
@@ -70,13 +70,20 @@ function SlotCell({ slot }) {
       </div>
     );
   }
+  if (slot.isZero) {
+    return (
+      <div style={S.cell('Zero Period', true)}>
+        <div style={{ fontWeight:700, fontSize:12, color:'#475569', textAlign:'center', marginTop:2 }}>{slot.teacher}</div>
+        <div style={{ fontSize:9, color:'#94a3b8', textAlign:'center', marginTop:4 }}>Zero Period</div>
+      </div>
+    );
+  }
   return (
-    <div className={slot.isZero ? "" : "cell-gradient"} style={S.cell(slot.sub, slot.isZero)}>
+    <div className="cell-gradient" style={S.cell(slot.sub, false)}>
       <div style={{ fontWeight:600, fontSize:11 }}>{subDisplayLabel(slot.cls || slot.sub)}</div>
       <div style={{ fontSize:10, color:'#6b7280', marginTop:1 }}>
         {slot.cls ? subDisplayLabel(slot.sub) : slot.teacher}
       </div>
-      {slot.isZero && <div style={{ fontSize:9, color:'#94a3b8' }}>Zero</div>}
     </div>
   );
 }
@@ -89,11 +96,18 @@ function TeacherSlotCell({ entries }) {
   }
   if (entries.length === 1) {
     const e = entries[0];
+    if (e.isZero) {
+      return (
+        <div style={S.cell('Zero Period', true)}>
+          <div style={{ fontWeight:700, fontSize:12, color:'#475569', textAlign:'center', marginTop:2 }}>{e.cls}</div>
+          <div style={{ fontSize:9, color:'#94a3b8', textAlign:'center', marginTop:4 }}>Zero Period</div>
+        </div>
+      );
+    }
     return (
-      <div className={e.isZero ? "" : "cell-gradient"} style={S.cell(e.sub, e.isZero)}>
+      <div className="cell-gradient" style={S.cell(e.sub, false)}>
         <div style={{ fontWeight:600, fontSize:11 }}>{e.cls}</div>
         <div style={{ fontSize:10, color:'#6b7280' }}>{subDisplayLabel(e.sub)}</div>
-        {e.isZero && <div style={{ fontSize:9, color:'#94a3b8' }}>Zero</div>}
       </div>
     );
   }
@@ -106,7 +120,7 @@ function TeacherSlotCell({ entries }) {
           minHeight:'auto', padding:'3px 5px',
         }}>
           <div style={{ fontWeight:600, fontSize:10 }}>{e.cls}</div>
-          <div style={{ fontSize:9, color:'#6b7280' }}>{subDisplayLabel(e.sub)}</div>
+          {!e.isZero && <div style={{ fontSize:9, color:'#6b7280' }}>{subDisplayLabel(e.sub)}</div>}
         </div>
       ))}
     </div>
@@ -199,7 +213,7 @@ function AppInner() {
   const { allTeacherNames, allClassNames, classTeachersMap, teacherSubjectsArray, getSubjectPeriods, getTeacherForSubject } = schoolData;
 
   const [section, setSection] = useState(role === 'teacher' ? 'personal' : 'dashboard');
-  const [timetable, setTimetable] = useLocalStorage('dcpems_timetable', null);
+  const [timetable, setTimetable, loadingTimetable] = useSupabase('dcpems_timetable', null);
   const [generating, setGenerating] = useState(false);
   const [genProgress, setGenProgress] = useState(0);   // 0-100
   const [genCost, setGenCost]         = useState(null); // current best cost
@@ -443,7 +457,11 @@ function AppInner() {
                 6. Use <b>Substitution</b> to find cover for absent teachers
               </div>
             </div>
-            {!timetable
+            {loadingTimetable
+              ? <div style={{ ...S.card, background:'#eff6ff', border:'1px solid #bfdbfe' }}>
+                  <div style={{ fontWeight:600, color:'#1e3a8a' }}><span className="spin" style={{display:'inline-block',marginRight:6}}>↻</span> Loading timetable from cloud...</div>
+                </div>
+              : !timetable
               ? <div style={{ ...S.card, background:'#fffbeb', border:'1px solid #fcd34d' }}>
                   <div style={{ fontWeight:600, color:'#92400e' }}>No timetable generated yet</div>
                   <div style={{ fontSize:12, color:'#78350f', marginTop:4 }}>Click "↻ Generate Timetable" in the sidebar.</div>
@@ -510,7 +528,9 @@ function AppInner() {
                 <button style={S.btn(viewMode==='list')} onClick={() => setViewMode('list')}>List</button>
               </div>
             </div>
-            {!timetable
+            {loadingTimetable 
+              ? <div style={S.card}>Loading timetable from cloud...</div>
+              : !timetable
               ? <div style={S.card}>Generate the timetable first using the sidebar button.</div>
               : viewMode === 'grid'
                 ? <div style={S.card}><PrintableTable title={`Class ${selectedClass} Timetable`} rows={buildClassRows(timetable, selectedClass)} /></div>
@@ -523,9 +543,17 @@ function AppInner() {
                             if (pi === brk(d)) return <div key="brk" style={{ width:'100%', fontSize:11, color:'#9ca3af', textAlign:'center', padding:'2px 0' }}>— BREAK —</div>;
                             const slot = timetable[selectedClass]?.[d]?.[pi];
                             const isZero = isZeroPeriodSlot(d, pi);
+                            if (isZero) {
+                              return (
+                                <div key={pi} style={{ ...S.cell('Zero Period', true), minWidth:96, padding:'6px 9px' }}>
+                                  <div style={{ fontSize:10, color:'#9ca3af', textAlign:'center' }}>Zero Period</div>
+                                  <div style={{ fontWeight:700, fontSize:13, marginTop:2, color:'#475569', textAlign:'center' }}>{slot?.teacher}</div>
+                                </div>
+                              );
+                            }
                             return (
-                              <div key={pi} style={{ ...S.cell(slot?.sub||'Free', isZero), minWidth:96, padding:'6px 9px' }}>
-                                <div style={{ fontSize:10, color:'#9ca3af' }}>{isZero ? 'Zero' : `P${pi+1}`}</div>
+                              <div key={pi} className="cell-gradient" style={{ ...S.cell(slot?.sub||'Free', false), minWidth:96, padding:'6px 9px' }}>
+                                <div style={{ fontSize:10, color:'#9ca3af' }}>{`P${pi+1}`}</div>
                                 <div style={{ fontWeight:700, fontSize:12, marginTop:2 }}>{subDisplayLabel(slot?.sub)||'—'}</div>
                                 <div style={{ fontSize:10, color:'#6b7280' }}>{slot?.teacher}</div>
                               </div>
@@ -549,7 +577,9 @@ function AppInner() {
                 {allTeacherNames.map(n => <option key={n} value={n}>{n}</option>)}
               </select>
             </div>
-            {!timetable
+            {loadingTimetable
+              ? <div style={S.card}>Loading timetable from cloud...</div>
+              : !timetable
               ? <div style={S.card}>Generate the timetable first.</div>
               : !selectedTeacher
                 ? <div style={S.card}>Select a teacher to view their timetable.</div>
@@ -574,6 +604,8 @@ function AppInner() {
             )}
             {!selectedTeacher
               ? <div style={S.card}>Select a teacher above to view their schedule.</div>
+              : loadingTimetable
+                ? <div style={S.card}>Loading timetable from cloud...</div>
               : !timetable
                 ? <div style={S.card}>Generate the timetable first.</div>
                 : <div style={S.card}>
@@ -632,7 +664,9 @@ function AppInner() {
               </div>
             </div>
 
-            {!timetable
+            {loadingTimetable
+              ? <div style={S.card}>Loading timetable from cloud...</div>
+              : !timetable
               ? <div style={S.card}>Generate the timetable first.</div>
               : <div style={{ overflowX:'auto' }} ref={masterRef}>
                   <table style={{ borderCollapse:'collapse', fontSize:11, minWidth:900 }}>
@@ -726,7 +760,9 @@ function AppInner() {
               </div>
             </div>
 
-            {!timetable
+            {loadingTimetable
+              ? <div style={S.card}>Loading timetable from cloud...</div>
+              : !timetable
               ? <div style={S.card}>Generate the timetable first.</div>
               : <div style={{ overflowX:'auto' }} ref={classMasterRef}>
                   <table style={{ borderCollapse:'collapse', fontSize:11, minWidth:900 }}>

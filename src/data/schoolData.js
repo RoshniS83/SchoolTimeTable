@@ -196,8 +196,8 @@ export function getSubjectPeriods(cls) {
     Library:1, "Aptitude Reasoning":1
   };
   if (g <= 8) return {
-    English:5, Maths:7, Science:6, SST:5, Hindi:4, Marathi:3,
-    Computer:3, GK:2, Robotics:2, Art:2, PE:2, Music:2,
+    English:5, Maths:7, Science:6, SST:6, Hindi:4, Marathi:3,
+    Computer:3, GK:2, Robotics:1, Art:2, PE:2, Music:2,
     Library:1, "Aptitude Reasoning":1
   };
   if (g <= 10) return {

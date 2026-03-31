@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
+import { useSupabase } from './useSupabase.js';
 import {
   ALL_CLASSES as DEFAULT_CLASSES,
   CLASS_TEACHERS as DEFAULT_CLASS_TEACHERS,
@@ -44,41 +45,18 @@ function buildInitialClasses() {
   return map;
 }
 
-// ── Storage helpers ───────────────────────────────────────────────────────────
-function load(key, fallback) {
-  try {
-    const v = localStorage.getItem(key);
-    return v ? JSON.parse(v) : fallback;
-  } catch { return fallback; }
-}
-function save(key, val) {
-  try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
-}
-
 // ── Hook ─────────────────────────────────────────────────────────────────────
 export function useSchoolData() {
-  const [teachers, setTeachersRaw] = useState(() =>
-    load('dcpems_teachers', buildInitialTeachers())
-  );
-  const [classes, setClassesRaw] = useState(() =>
-    load('dcpems_classes', buildInitialClasses())
-  );
+  const [teachers, setTeachersRaw] = useSupabase('dcpems_teachers', buildInitialTeachers());
+  const [classes, setClassesRaw] = useSupabase('dcpems_classes', buildInitialClasses());
 
   const setTeachers = useCallback((updater) => {
-    setTeachersRaw(prev => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      save('dcpems_teachers', next);
-      return next;
-    });
-  }, []);
+    setTeachersRaw(prev => typeof updater === 'function' ? updater(prev) : updater);
+  }, [setTeachersRaw]);
 
   const setClasses = useCallback((updater) => {
-    setClassesRaw(prev => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      save('dcpems_classes', next);
-      return next;
-    });
-  }, []);
+    setClassesRaw(prev => typeof updater === 'function' ? updater(prev) : updater);
+  }, [setClassesRaw]);
 
   // ── Teacher CRUD ────────────────────────────────────────────────────────────
 
@@ -241,11 +219,9 @@ export function useSchoolData() {
   const resetToDefaults = useCallback(() => {
     const t = buildInitialTeachers();
     const c = buildInitialClasses();
-    save('dcpems_teachers', t);
-    save('dcpems_classes', c);
     setTeachersRaw(t);
     setClassesRaw(c);
-  }, []);
+  }, [setTeachersRaw, setClassesRaw]);
 
   // ── Derived helpers ─────────────────────────────────────────────────────────
   const allTeacherNames = Object.keys(teachers).sort();
