@@ -10,7 +10,7 @@
  * Based on: Hooshmand et al. 2013 (arXiv:1309.3285)
  */
 
-import { DAYS, WD_PERIODS, SAT_PERIODS } from '../data/schoolData.js';
+import { DAYS, WD_PERIODS, SAT_PERIODS, OPTIONAL_GROUPS } from '../data/schoolData.js';
 
 // ── Period helpers ─────────────────────────────────────────────────────────────
 export const nPeriods         = d  => d === 'Sat' ? SAT_PERIODS : WD_PERIODS;
@@ -678,18 +678,40 @@ export function generateTimetable(params, onProgress) {
   return optimised;
 }
 
+// Helper: resolve a teacher's specific subject within the optional group
+// e.g. Varsha T -> 'IT', Mamta J -> 'Hindi', New PE Teacher -> 'PE'
+function resolveOptionalSub(tname) {
+  for (const groups of Object.values(OPTIONAL_GROUPS)) {
+    const match = groups.find(g => g.teacher === tname);
+    if (match) return match.sub.replace('Optional-', ''); // 'Optional-IT' -> 'IT'
+  }
+  return 'IT/PE/Hindi'; // fallback
+}
+
 export function getTeacherTimetable(timetable, tname, allClassNames) {
   if (!timetable) return null;
   const tt = {};
   DAYS.forEach(d => {
     tt[d] = Array.from({ length: nPeriods(d) }, () => []);
     for (let pi = 0; pi < nPeriods(d); pi++) {
+      let hasOptional = false;
       allClassNames.forEach(cls => {
         const s = timetable[cls]?.[d]?.[pi];
         if (s?.teacher && s.teacher.split(',').map(x=>x.trim()).includes(tname)) {
-          tt[d][pi].push({ cls, sub: s.sub, isZero: s.isZero });
+          if (s.sub === 'IT/PE/Hindi') {
+            // Collect flag — will be collapsed into ONE entry below
+            hasOptional = true;
+          } else {
+            tt[d][pi].push({ cls, sub: s.sub, isZero: s.isZero });
+          }
         }
       });
+      // Collapse all optional 11/12 classes into a SINGLE entry for this teacher
+      // (physically they teach ONE group of students drawn from all four classes)
+      if (hasOptional) {
+        const optSub = resolveOptionalSub(tname);
+        tt[d][pi].push({ cls: '11 & 12', sub: optSub, isZero: false });
+      }
     }
   });
   return tt;
@@ -753,15 +775,24 @@ export function buildMasterTimetable(timetable, allTeacherNames, allClassNames) 
         let classes = [];
         let sub = null;
         let isZero = false;
+        let hasOptional = false;
         allClassNames.forEach(cls => {
           const s = timetable[cls]?.[d]?.[p];
           if (s?.teacher && s.teacher.split(',').map(x=>x.trim()).includes(teacher)) {
-            classes.push(cls);
-            sub = s.sub;
-            isZero = s.isZero;
+            if (s.sub === 'IT/PE/Hindi') {
+              hasOptional = true; // collapse — don't push 4 classes
+            } else {
+              classes.push(cls);
+              sub = s.sub;
+              isZero = s.isZero;
+            }
           }
         });
-        if (classes.length > 0) {
+        if (hasOptional) {
+          // One entry per period: teacher's specific optional subject
+          days[d].push({ cls: '11 & 12', sub: resolveOptionalSub(teacher), p, isZero: false });
+          total++;
+        } else if (classes.length > 0) {
           days[d].push({ cls: classes.join(', '), sub, p, isZero });
           total++;
         } else {
